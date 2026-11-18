@@ -448,6 +448,7 @@ class DynamicResourceManager {
             if (!this.dockerUpdatesSummaryCreated) {
                 await this.stateManager.writeState('docker.updates.availableCount', { type: 'number', role: 'value', unit: '' }, null);
                 await this.stateManager.writeState('docker.updates.hasUpdates', { type: 'boolean', role: 'indicator' }, null);
+                await this.createDockerUpdateAllButton();
                 this.dockerUpdatesSummaryCreated = true;
             }
             if (seenAny) {
@@ -867,6 +868,31 @@ class DynamicResourceManager {
             // Initialize button state to false
             await this.adapter.setStateAsync(stateId, false, true);
         }
+    }
+    /**
+     * Create the "update all containers" button (once per adapter start).
+     */
+    async createDockerUpdateAllButton() {
+        const control = unraid_domains_1.DOCKER_UPDATE_ALL_STATE;
+        const translations = state_names_json_1.default[control.id];
+        await this.adapter.extendObjectAsync('docker.commands', {
+            type: 'channel',
+            common: { name: state_names_json_1.default['docker.commands'] || 'Commands' },
+            native: {},
+        });
+        await this.adapter.extendObjectAsync(control.id, {
+            type: 'state',
+            common: {
+                type: control.common.type,
+                role: control.common.role,
+                read: true,
+                write: true,
+                def: false,
+                name: translations || control.common.name,
+            },
+            native: { resourceType: 'dockerAll', resourceId: 'all', action: 'updateAll' },
+        });
+        await this.adapter.setStateChangedAsync(control.id, false, true);
     }
     /**
      * Create control buttons for a VM

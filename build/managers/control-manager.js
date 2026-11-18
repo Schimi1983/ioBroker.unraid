@@ -132,6 +132,9 @@ class ControlManager {
             case 'vm':
                 await this.executeVmAction(resourceId, action);
                 return null;
+            case 'dockerAll':
+                await this.executeDockerAllAction(action);
+                return null;
             default:
                 throw new Error(`Unknown resource type: ${resourceType}`);
         }
@@ -186,6 +189,14 @@ class ControlManager {
                 this.adapter.log.debug(`Docker resume mutation result: ${JSON.stringify(resumeResult)}`);
                 return this.parseDockerMutationResult(resumeResult, 'unpause');
             }
+            case 'restart': {
+                if (!this.isSupported('dockerRestart', 'Docker restart')) {
+                    return null;
+                }
+                const restartResult = await this.apolloClient.mutate(mutations_1.DOCKER_RESTART_MUTATION, { id: containerId });
+                this.adapter.log.debug(`Docker restart mutation result: ${JSON.stringify(restartResult)}`);
+                return this.parseDockerMutationResult(restartResult, 'restart');
+            }
             case 'update': {
                 if (!this.isSupported('dockerUpdate', 'Docker update')) {
                     return null;
@@ -197,6 +208,22 @@ class ControlManager {
             default:
                 throw new Error(`Unknown Docker action: ${action}`);
         }
+    }
+    /**
+     * Execute actions that affect all Docker containers
+     *
+     * @param action - Action to perform (updateAll)
+     */
+    async executeDockerAllAction(action) {
+        if (action !== 'updateAll') {
+            throw new Error(`Unknown Docker action: ${action}`);
+        }
+        if (!this.isSupported('dockerUpdateAll', 'Docker update all')) {
+            return;
+        }
+        const result = await this.apolloClient.mutate(mutations_1.DOCKER_UPDATE_ALL_MUTATION);
+        const updated = result?.docker?.updateAllContainers;
+        this.adapter.log.info(`Docker update all: ${Array.isArray(updated) ? updated.length : 0} container(s) updated`);
     }
     /**
      * Execute VM control actions

@@ -37,13 +37,16 @@ export type DomainId =
     | 'array.disks'
     | 'array.parities'
     | 'array.caches'
+    | 'array.parityCheck'
     | 'docker'
     | 'docker.containers'
     | 'docker.updates'
     | 'shares'
     | 'shares.list'
     | 'vms'
-    | 'vms.list';
+    | 'vms.list'
+    | 'notifications'
+    | 'notifications.overview';
 
 /**
  * Specification for a GraphQL field selection.
@@ -203,6 +206,12 @@ const domainTreeDefinition: readonly DomainNode[] = [
                 label: 'domains.array.caches',
                 defaultSelected: false,
             },
+            {
+                id: 'array.parityCheck',
+                label: 'domains.array.parityCheck',
+                description: 'domains.array.parityCheck_help',
+                defaultSelected: true,
+            },
         ],
     },
     {
@@ -240,6 +249,18 @@ const domainTreeDefinition: readonly DomainNode[] = [
                 id: 'vms.list',
                 label: 'domains.vms.list',
                 defaultSelected: false,
+            },
+        ],
+    },
+    {
+        id: 'notifications',
+        label: 'domains.notifications',
+        children: [
+            {
+                id: 'notifications.overview',
+                label: 'domains.notifications.overview',
+                description: 'domains.notifications.overview_help',
+                defaultSelected: true,
             },
         ],
     },
@@ -373,7 +394,7 @@ const domainDefinitionsList: readonly DomainDefinition[] = [
                 fields: [
                     {
                         name: 'os',
-                        selection: [{ name: 'distro' }, { name: 'release' }, { name: 'kernel' }],
+                        selection: [{ name: 'distro' }, { name: 'release' }, { name: 'kernel' }, { name: 'uptime' }],
                     },
                 ],
             },
@@ -393,6 +414,14 @@ const domainDefinitionsList: readonly DomainDefinition[] = [
                 id: 'info.os.kernel',
                 path: ['info', 'os', 'kernel'],
                 common: { type: 'string', role: 'info.version' },
+            },
+            {
+                // Unraid reports the boot time (ISO string) in the `uptime` field.
+                // Storing the boot time instead of a running uptime avoids a state write on every poll.
+                id: 'info.os.bootTime',
+                path: ['info', 'os', 'uptime'],
+                common: { type: 'number', role: 'date' },
+                transform: isoToTimestamp,
             },
         ],
     },
@@ -648,6 +677,132 @@ const domainDefinitionsList: readonly DomainDefinition[] = [
                     }
                     return null;
                 },
+            },
+        ],
+    },
+    {
+        id: 'array.parityCheck',
+        selection: [
+            {
+                root: 'array',
+                fields: [
+                    {
+                        name: 'parityCheckStatus',
+                        selection: [
+                            { name: 'status' },
+                            { name: 'running' },
+                            { name: 'paused' },
+                            { name: 'correcting' },
+                            { name: 'progress' },
+                            { name: 'errors' },
+                            { name: 'speed' },
+                            { name: 'date' },
+                            { name: 'duration' },
+                        ],
+                    },
+                ],
+            },
+        ],
+        states: [
+            {
+                id: 'array.parityCheck.status',
+                path: ['array', 'parityCheckStatus', 'status'],
+                common: { type: 'string', role: 'text' },
+            },
+            {
+                id: 'array.parityCheck.running',
+                path: ['array', 'parityCheckStatus', 'running'],
+                common: { type: 'boolean', role: 'indicator.working' },
+            },
+            {
+                id: 'array.parityCheck.paused',
+                path: ['array', 'parityCheckStatus', 'paused'],
+                common: { type: 'boolean', role: 'indicator' },
+            },
+            {
+                id: 'array.parityCheck.correcting',
+                path: ['array', 'parityCheckStatus', 'correcting'],
+                common: { type: 'boolean', role: 'indicator' },
+            },
+            {
+                id: 'array.parityCheck.progress',
+                path: ['array', 'parityCheckStatus', 'progress'],
+                common: { type: 'number', role: 'value', unit: '%' },
+                transform: numberOrNull,
+            },
+            {
+                id: 'array.parityCheck.errors',
+                path: ['array', 'parityCheckStatus', 'errors'],
+                common: { type: 'number', role: 'value' },
+                transform: numberOrNull,
+            },
+            {
+                id: 'array.parityCheck.speed',
+                path: ['array', 'parityCheckStatus', 'speed'],
+                common: { type: 'number', role: 'value', unit: 'MB/s' },
+                transform: leadingNumberOrNull,
+            },
+            {
+                id: 'array.parityCheck.lastDate',
+                path: ['array', 'parityCheckStatus', 'date'],
+                common: { type: 'number', role: 'date' },
+                transform: isoToTimestamp,
+            },
+            {
+                id: 'array.parityCheck.duration',
+                path: ['array', 'parityCheckStatus', 'duration'],
+                common: { type: 'number', role: 'value', unit: 's' },
+                transform: numberOrNull,
+            },
+        ],
+    },
+    {
+        id: 'notifications.overview',
+        selection: [
+            {
+                root: 'notifications',
+                fields: [
+                    {
+                        name: 'overview',
+                        selection: [
+                            {
+                                name: 'unread',
+                                selection: [
+                                    { name: 'info' },
+                                    { name: 'warning' },
+                                    { name: 'alert' },
+                                    { name: 'total' },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+        states: [
+            {
+                id: 'notifications.unread.alert',
+                path: ['notifications', 'overview', 'unread', 'alert'],
+                common: { type: 'number', role: 'value' },
+                transform: numberOrNull,
+            },
+            {
+                id: 'notifications.unread.warning',
+                path: ['notifications', 'overview', 'unread', 'warning'],
+                common: { type: 'number', role: 'value' },
+                transform: numberOrNull,
+            },
+            {
+                id: 'notifications.unread.info',
+                path: ['notifications', 'overview', 'unread', 'info'],
+                common: { type: 'number', role: 'value' },
+                transform: numberOrNull,
+            },
+            {
+                id: 'notifications.unread.total',
+                path: ['notifications', 'overview', 'unread', 'total'],
+                common: { type: 'number', role: 'value' },
+                transform: numberOrNull,
             },
         ],
     },
@@ -938,6 +1093,37 @@ function kilobytesToGigabytes(value: unknown): number | null {
 }
 
 /**
+ * Convert an ISO date string to a millisecond timestamp (role `date` with type number).
+ *
+ * @param value - ISO date string
+ * @returns Timestamp in ms or null if missing/invalid
+ */
+export function isoToTimestamp(value: unknown): number | null {
+    if (typeof value !== 'string' || !value) {
+        return null;
+    }
+    const ts = Date.parse(value);
+    return Number.isFinite(ts) ? ts : null;
+}
+
+/**
+ * Read the leading number of a text such as "152.3 MB/s".
+ *
+ * @param value - Number or text starting with a number
+ * @returns Parsed number or null
+ */
+export function leadingNumberOrNull(value: unknown): number | null {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const match = /^\s*(-?\d+(?:[.,]\d+)?)/.exec(value);
+    return match ? Number(match[1].replace(',', '.')) : null;
+}
+
+/**
  * List of all domain definitions with their GraphQL selections and state mappings
  */
 export const domainDefinitions = domainDefinitionsList;
@@ -1059,7 +1245,36 @@ export const DOCKER_CONTROL_STATES: StateMapping[] = [
             name: 'Update Container',
         },
     },
+    {
+        id: 'commands.restart',
+        path: [],
+        common: {
+            type: 'boolean',
+            role: 'button.press',
+            read: true,
+            write: true,
+            def: false,
+            name: 'Restart Container',
+        },
+    },
 ];
+
+/**
+ * Button that updates every container with an available update (Docker "Update All").
+ * Created with the `docker.updates` domain.
+ */
+export const DOCKER_UPDATE_ALL_STATE: StateMapping = {
+    id: 'docker.commands.updateAll',
+    path: [],
+    common: {
+        type: 'boolean',
+        role: 'button.press',
+        read: true,
+        write: true,
+        def: false,
+        name: 'Update all containers',
+    },
+};
 
 /**
  * Virtual machine control state mappings

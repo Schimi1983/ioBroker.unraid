@@ -65,5 +65,9 @@
     "domains.rclone": "Rclone",
     "domains.metrics.temperature": "Temperatuur",
     "domains.metrics.temperature.board": "Moederbordsensoren (Unraid 7.2+)",
-    "domains.docker.updates": "Update-beschikbaarheid (Unraid 7.2+)"
+    "domains.docker.updates": "Update-beschikbaarheid (Unraid 7.2+)",
+    "domains.array.parityCheck": "Pariteitscontrole",
+    "domains.array.parityCheck_help": "Status, voortgang en fouten van de lopende of laatste pariteitscontrole",
+    "domains.notifications.overview": "Ongelezen meldingen",
+    "domains.notifications.overview_help": "Aantal ongelezen Unraid-meldingen (alarmen, waarschuwingen, informatie) – bijv. om waarschuwingen naar je telefoon door te sturen"
 }

@@ -11,7 +11,7 @@ import {
     bigIntToNumber,
     sanitizeResourceName,
 } from '../utils/data-transformers';
-import { DOCKER_CONTROL_STATES, VM_CONTROL_STATES } from '../shared/unraid-domains';
+import { DOCKER_CONTROL_STATES, DOCKER_UPDATE_ALL_STATE, VM_CONTROL_STATES } from '../shared/unraid-domains';
 import stateTranslations from '../translations/state-names.json';
 
 /**
@@ -635,6 +635,7 @@ export class DynamicResourceManager {
                     { type: 'boolean', role: 'indicator' },
                     null,
                 );
+                await this.createDockerUpdateAllButton();
                 this.dockerUpdatesSummaryCreated = true;
             }
 
@@ -1215,6 +1216,32 @@ export class DynamicResourceManager {
             // Initialize button state to false
             await this.adapter.setStateAsync(stateId, false, true);
         }
+    }
+
+    /**
+     * Create the "update all containers" button (once per adapter start).
+     */
+    private async createDockerUpdateAllButton(): Promise<void> {
+        const control = DOCKER_UPDATE_ALL_STATE;
+        const translations = (stateTranslations as Record<string, any>)[control.id];
+        await this.adapter.extendObjectAsync('docker.commands', {
+            type: 'channel',
+            common: { name: (stateTranslations as Record<string, any>)['docker.commands'] || 'Commands' },
+            native: {},
+        });
+        await this.adapter.extendObjectAsync(control.id, {
+            type: 'state',
+            common: {
+                type: control.common.type,
+                role: control.common.role,
+                read: true,
+                write: true,
+                def: false,
+                name: translations || control.common.name,
+            },
+            native: { resourceType: 'dockerAll', resourceId: 'all', action: 'updateAll' },
+        });
+        await this.adapter.setStateChangedAsync(control.id, false, true);
     }
 
     /**

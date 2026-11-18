@@ -7,6 +7,8 @@ import {
     DOCKER_PAUSE_MUTATION,
     DOCKER_UNPAUSE_MUTATION,
     DOCKER_UPDATE_MUTATION,
+    DOCKER_RESTART_MUTATION,
+    DOCKER_UPDATE_ALL_MUTATION,
     VM_START_MUTATION,
     VM_STOP_MUTATION,
     VM_PAUSE_MUTATION,
@@ -162,6 +164,9 @@ export class ControlManager {
             case 'vm':
                 await this.executeVmAction(resourceId, action);
                 return null;
+            case 'dockerAll':
+                await this.executeDockerAllAction(action);
+                return null;
             default:
                 throw new Error(`Unknown resource type: ${resourceType}`);
         }
@@ -229,6 +234,15 @@ export class ControlManager {
                 return this.parseDockerMutationResult(resumeResult, 'unpause');
             }
 
+            case 'restart': {
+                if (!this.isSupported('dockerRestart', 'Docker restart')) {
+                    return null;
+                }
+                const restartResult = await this.apolloClient.mutate(DOCKER_RESTART_MUTATION, { id: containerId });
+                this.adapter.log.debug(`Docker restart mutation result: ${JSON.stringify(restartResult)}`);
+                return this.parseDockerMutationResult(restartResult, 'restart');
+            }
+
             case 'update': {
                 if (!this.isSupported('dockerUpdate', 'Docker update')) {
                     return null;
@@ -241,6 +255,25 @@ export class ControlManager {
             default:
                 throw new Error(`Unknown Docker action: ${action}`);
         }
+    }
+
+    /**
+     * Execute actions that affect all Docker containers
+     *
+     * @param action - Action to perform (updateAll)
+     */
+    private async executeDockerAllAction(action: string): Promise<void> {
+        if (action !== 'updateAll') {
+            throw new Error(`Unknown Docker action: ${action}`);
+        }
+        if (!this.isSupported('dockerUpdateAll', 'Docker update all')) {
+            return;
+        }
+        const result = await this.apolloClient.mutate<{ docker?: { updateAllContainers?: unknown[] } }>(
+            DOCKER_UPDATE_ALL_MUTATION,
+        );
+        const updated = result?.docker?.updateAllContainers;
+        this.adapter.log.info(`Docker update all: ${Array.isArray(updated) ? updated.length : 0} container(s) updated`);
     }
 
     /**
