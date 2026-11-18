@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PollingManager = void 0;
+exports.describePollingError = describePollingError;
 const selection_builder_1 = require("../graphql/selection-builder");
 /**
  * Manages polling cycles and GraphQL queries
@@ -10,10 +11,17 @@ class PollingManager {
     apolloClient;
     capabilities;
     onDataReceived;
+    onConnectionChange;
     pollTimer;
     stopRequested = false;
     currentDefinitions = [];
     reportedMissingFields = new Set();
+    /** True while a poll request is running */
+    pollRunning = false;
+    /** A poll was requested while another one was running */
+    pollPending = false;
+    /** Last reported error (used to log repeated failures only once) */
+    lastError;
     /**
      * Create a new polling manager
      *
@@ -21,12 +29,14 @@ class PollingManager {
      * @param apolloClient - Apollo client for GraphQL queries
      * @param capabilities - Mutable capability flags; updated on runtime fallback
      * @param onDataReceived - Callback function when data is received
+     * @param onConnectionChange - Callback with the result of every poll (true = server answered)
      */
-    constructor(adapter, apolloClient, capabilities, onDataReceived) {
+    constructor(adapter, apolloClient, capabilities, onDataReceived, onConnectionChange = async () => { }) {
         this.adapter = adapter;
         this.apolloClient = apolloClient;
         this.capabilities = capabilities;
         this.onDataReceived = onDataReceived;
+        this.onConnectionChange = onConnectionChange;
     }
     /**
      * Start polling with the given interval
@@ -40,11 +50,7 @@ class PollingManager {
         }
         this.currentDefinitions = definitions;
         // Execute first poll immediately
-        void this.pollOnce(definitions)
-            .catch(error => {
-            this.adapter.log.error(`Initial polling failed: ${this.describeError(error)}`);
-        })
-            .finally(() => {
+        void this.pollOnce(definitions).finally(() => {
             this.scheduleNextPoll(pollIntervalMs, definitions);
         });
     }
@@ -56,9 +62,7 @@ class PollingManager {
             this.adapter.log.debug('Cannot poll - no definitions available');
             return;
         }
-        void this.pollOnce(this.currentDefinitions).catch(error => {
-            this.adapter.log.error(`Manual polling failed: ${this.describeError(error)}`);
-        });
+        void this.pollOnce(this.currentDefinitions);
     }
     /**
      * Stop polling
@@ -71,7 +75,8 @@ class PollingManager {
         }
     }
     /**
-     * Execute a single polling cycle
+     * Execute a single polling cycle. Never throws: errors are reported once via the log
+     * and through `onConnectionChange(false)`.
      *
      * @param definitions - Array of domain definitions to poll
      */
@@ -80,15 +85,32 @@ class PollingManager {
             this.adapter.log.debug('Skipping poll because no domains are selected.');
             return;
         }
+        if (this.pollRunning) {
+            // Note: A control action triggers an extra poll; never run two requests in parallel
+            this.pollPending = true;
+            return;
+        }
         const query = this.buildQuery(definitions);
         if (!query) {
             this.adapter.log.warn('No query could be built for the current selection.');
             return;
         }
+        this.pollRunning = true;
         try {
             const data = await this.apolloClient.query(query);
             this.logGraphQLResponse(data);
-            await this.onDataReceived(data);
+            await this.onConnectionChange(true);
+            if (this.lastError) {
+                this.adapter.log.info('Connection to the Unraid server restored.');
+                this.lastError = undefined;
+            }
+            try {
+                await this.onDataReceived(data);
+            }
+            catch (processingError) {
+                // Server answered; a failure here is local (objects DB) and not a connection problem
+                this.adapter.log.error(`Processing Unraid data failed: ${this.describeError(processingError)}`);
+            }
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -102,11 +124,31 @@ class PollingManager {
                     return;
                 }
             }
-            if (error instanceof Error) {
-                throw new Error(`GraphQL error: ${error.message}`);
-            }
-            throw error;
+            await this.onConnectionChange(false);
+            this.reportError(error);
         }
+        finally {
+            this.pollRunning = false;
+            if (this.pollPending && !this.stopRequested) {
+                this.pollPending = false;
+                void this.pollOnce(this.currentDefinitions);
+            }
+        }
+    }
+    /**
+     * Log a polling error in plain words. The same error is logged only once;
+     * repetitions go to the debug log until the connection recovers.
+     *
+     * @param error - Error thrown by the GraphQL client
+     */
+    reportError(error) {
+        const text = describePollingError(error);
+        if (text === this.lastError) {
+            this.adapter.log.debug(`Polling still failing: ${text}`);
+            return;
+        }
+        this.lastError = text;
+        this.adapter.log.error(text);
     }
     /**
      * Parse a "Cannot query field" error and turn off the matching capability flag.
@@ -148,11 +190,7 @@ class PollingManager {
             return;
         }
         this.pollTimer = this.adapter.setTimeout(() => {
-            void this.pollOnce(definitions)
-                .catch(error => {
-                this.adapter.log.error(`Polling failed: ${this.describeError(error)}`);
-            })
-                .finally(() => {
+            void this.pollOnce(definitions).finally(() => {
                 this.scheduleNextPoll(pollIntervalMs, definitions);
             });
         }, pollIntervalMs);
@@ -198,4 +236,26 @@ class PollingManager {
     }
 }
 exports.PollingManager = PollingManager;
+/**
+ * Turn a GraphQL/network error into a short, user-facing log message.
+ *
+ * @param error - Error thrown by Apollo Client or fetch
+ * @returns Message for the ioBroker log
+ */
+function describePollingError(error) {
+    const err = error;
+    const message = String(err?.message ?? error);
+    const status = typeof err?.statusCode === 'number' ? err.statusCode : undefined;
+    const code = err?.cause?.code ?? /\b(ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|ECONNRESET)\b/.exec(message)?.[1];
+    if (status === 401 || status === 403 || /\b(401|403)\b|forbidden|unauthori[sz]ed/i.test(message)) {
+        return 'Unraid rejected the API key (check the key and its permissions in Unraid: Settings > Management Access > API Keys).';
+    }
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError' || /aborted|timeout/i.test(message)) {
+        return 'Unraid did not answer in time (request timed out). Will retry with the next poll.';
+    }
+    if (code) {
+        return `Unraid server not reachable (${code}). Check the address in the adapter settings.`;
+    }
+    return `Polling failed: ${message}`;
+}
 //# sourceMappingURL=polling-manager.js.map

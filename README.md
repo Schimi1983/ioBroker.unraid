@@ -100,6 +100,14 @@ The adapter creates a structured tree of objects for the monitored data:
   Placeholder for the next version (at the beginning of the line):
   ### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+
+- (Schimi1983) New state `info.connection`: the instance now shows whether the Unraid server answers
+- (Schimi1983) Much less load on ioBroker: objects are only written when they change, values only when they change
+- (Schimi1983) Clear log messages for a wrong API key, an unreachable server or a timeout — each problem is logged once, not on every poll
+- (Schimi1983) Requests time out after 30 seconds (control actions after 10 minutes) and never run in parallel
+- (Schimi1983) Detection of Unraid features works again on current Unraid versions (introspection is blocked by Unraid; the warning at startup is gone)
+
 ### 0.10.0 (2026-08-21)
 
 - (ingel81) Security fixes in the network libraries (`ws`, `undici`)

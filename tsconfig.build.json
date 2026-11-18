@@ -13,5 +13,5 @@
         "downlevelIteration": true
     },
     "include": ["src/**/*.ts", "lib/**/*.d.ts"],
-    "exclude": ["build", "node_modules", "admin/src"]
+    "exclude": ["build", "node_modules", "admin/src", "src/**/*.test.ts"]
 }

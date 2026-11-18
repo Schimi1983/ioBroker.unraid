@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ALL_CAPABILITIES_DISABLED = void 0;
+exports.CAPABILITY_FIELDS = exports.ALL_CAPABILITIES_DISABLED = void 0;
 exports.allCapabilitiesEnabled = allCapabilitiesEnabled;
+exports.capabilitiesFromValidationErrors = capabilitiesFromValidationErrors;
 exports.ALL_CAPABILITIES_DISABLED = {
     temperatureMetrics: false,
     dockerUpdateFlag: false,
@@ -23,5 +24,32 @@ function allCapabilitiesEnabled() {
         dockerUnpause: true,
         dockerUpdate: true,
     };
+}
+/** Fields whose absence disables a capability, as reported by "Cannot query field" validation errors */
+exports.CAPABILITY_FIELDS = {
+    temperature: 'temperatureMetrics',
+    isUpdateAvailable: 'dockerUpdateFlag',
+    containerUpdateStatuses: 'dockerContainerUpdateStatuses',
+    pause: 'dockerPause',
+    unpause: 'dockerUnpause',
+    updateContainer: 'dockerUpdate',
+};
+/**
+ * Derive capability flags from GraphQL validation error messages.
+ * Every capability is enabled unless its field is reported as unknown.
+ *
+ * @param messages - Error messages returned by the server
+ * @returns Capability flags
+ */
+function capabilitiesFromValidationErrors(messages) {
+    const capabilities = allCapabilitiesEnabled();
+    for (const message of messages) {
+        const match = /Cannot query field "([^"]+)"/.exec(message);
+        const capability = match ? exports.CAPABILITY_FIELDS[match[1]] : undefined;
+        if (capability) {
+            capabilities[capability] = false;
+        }
+    }
+    return capabilities;
 }
 //# sourceMappingURL=capabilities.js.map

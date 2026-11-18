@@ -25,11 +25,11 @@ export class ObjectManager {
      * Create a new ObjectManager
      *
      * @param adapter - Adapter interface
-     * @param _stateManager - State manager instance (unused, kept for compatibility)
+     * @param stateManager - State manager instance (its object cache is reset when resources are removed)
      */
     constructor(
         private readonly adapter: AdapterInterface,
-        private readonly _stateManager: StateManager,
+        private readonly stateManager: StateManager,
     ) {}
 
     /**
@@ -114,6 +114,7 @@ export class ObjectManager {
 
             try {
                 await this.adapter.delObjectAsync(objectPrefix, { recursive: true });
+                this.stateManager.forgetObjects(objectPrefix);
 
                 // Remove from tracking
                 const toDelete: string[] = [];
@@ -150,6 +151,9 @@ export class ObjectManager {
         'vms.list': ['vms'],
         'metrics.temperature.board': ['metrics.temperature.board'],
     };
+
+    /** Objects defined in io-package.json `instanceObjects`; kept regardless of the domain selection. */
+    private static readonly INSTANCE_OBJECT_IDS: readonly string[] = ['info', 'info.connection'];
 
     /**
      * Clean up all objects not in the selected domains.
@@ -198,6 +202,11 @@ export class ObjectManager {
                     addWithAncestors(prefix);
                 }
             }
+        }
+
+        // Instance objects from io-package.json (connection indicator) must never be removed
+        for (const id of ObjectManager.INSTANCE_OBJECT_IDS) {
+            allowedExactIds.add(id);
         }
 
         let removed = 0;

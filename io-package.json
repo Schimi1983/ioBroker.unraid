@@ -180,5 +180,51 @@
     "apiToken"
   ],
   "objects": [],
-  "instanceObjects": []
+  "instanceObjects": [
+    {
+      "_id": "info",
+      "type": "channel",
+      "common": {
+        "name": {
+          "en": "Information",
+          "de": "Information",
+          "ru": "Информация",
+          "pt": "Informação",
+          "nl": "Informatie",
+          "fr": "Information",
+          "it": "Informazioni",
+          "es": "Información",
+          "pl": "Informacja",
+          "uk": "Інформація",
+          "zh-cn": "信息"
+        }
+      },
+      "native": {}
+    },
+    {
+      "_id": "info.connection",
+      "type": "state",
+      "common": {
+        "role": "indicator.connected",
+        "name": {
+          "en": "Connected to Unraid",
+          "de": "Mit Unraid verbunden",
+          "ru": "Подключено к Unraid",
+          "pt": "Conectado ao Unraid",
+          "nl": "Verbonden met Unraid",
+          "fr": "Connecté à Unraid",
+          "it": "Connesso a Unraid",
+          "es": "Conectado a Unraid",
+          "pl": "Połączono z Unraid",
+          "uk": "Підключено до Unraid",
+          "zh-cn": "已连接到 Unraid"
+        },
+        "type": "boolean",
+        "read": true,
+        "write": false,
+        "def": false
+      },
+      "native": {}
+    }
+  ]
 }

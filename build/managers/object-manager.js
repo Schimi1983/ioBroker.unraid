@@ -8,7 +8,7 @@ const unraid_domains_1 = require("../shared/unraid-domains");
  */
 class ObjectManager {
     adapter;
-    _stateManager;
+    stateManager;
     trackedObjects = new Map();
     currentPollTimestamp = 0;
     staticObjectIds = new Set();
@@ -16,11 +16,11 @@ class ObjectManager {
      * Create a new ObjectManager
      *
      * @param adapter - Adapter interface
-     * @param _stateManager - State manager instance (unused, kept for compatibility)
+     * @param stateManager - State manager instance (its object cache is reset when resources are removed)
      */
-    constructor(adapter, _stateManager) {
+    constructor(adapter, stateManager) {
         this.adapter = adapter;
-        this._stateManager = _stateManager;
+        this.stateManager = stateManager;
     }
     /**
      * Initialize object tracking with static definitions
@@ -92,6 +92,7 @@ class ObjectManager {
             this.adapter.log.info(`Resource ${resourceType}/${resourceId} no longer exists, removing objects`);
             try {
                 await this.adapter.delObjectAsync(objectPrefix, { recursive: true });
+                this.stateManager.forgetObjects(objectPrefix);
                 // Remove from tracking
                 const toDelete = [];
                 for (const [id, obj] of this.trackedObjects) {
@@ -127,6 +128,8 @@ class ObjectManager {
         'vms.list': ['vms'],
         'metrics.temperature.board': ['metrics.temperature.board'],
     };
+    /** Objects defined in io-package.json `instanceObjects`; kept regardless of the domain selection. */
+    static INSTANCE_OBJECT_IDS = ['info', 'info.connection'];
     /**
      * Clean up all objects not in the selected domains.
      *
@@ -169,6 +172,10 @@ class ObjectManager {
                     addWithAncestors(prefix);
                 }
             }
+        }
+        // Instance objects from io-package.json (connection indicator) must never be removed
+        for (const id of ObjectManager.INSTANCE_OBJECT_IDS) {
+            allowedExactIds.add(id);
         }
         let removed = 0;
         let kept = 0;

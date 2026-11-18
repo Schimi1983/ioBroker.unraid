@@ -9,6 +9,14 @@ import stateTranslations from '../translations/state-names.json';
 export class StateManager {
     private readonly createdChannels = new Set<string>();
     private readonly createdStates = new Set<string>();
+    /**
+     * Last written object definition per id (serialized `common` subset).
+     *
+     * Note: Objects used to be rewritten with setObjectAsync on every poll cycle
+     * (one write per state plus one per parent channel). Comparing against this cache
+     * keeps the objects DB untouched unless name, role, type or unit actually change.
+     */
+    private readonly objectSignatures = new Map<string, string>();
 
     /**
      * Create a new state manager
@@ -33,8 +41,14 @@ export class StateManager {
             }
             if (obj.type === 'state') {
                 this.createdStates.add(relativeId);
+                const common = obj.common as Partial<ioBroker.StateCommon>;
+                this.objectSignatures.set(
+                    relativeId,
+                    StateManager.stateSignature(common.name, common.role, common.type, common.unit),
+                );
             } else if (obj.type === 'channel') {
                 this.createdChannels.add(relativeId);
+                this.objectSignatures.set(relativeId, StateManager.channelSignature(obj.common?.name));
             }
         }
     }
@@ -111,19 +125,22 @@ export class StateManager {
 
         const stateAlreadyExisted = this.createdStates.has(id);
 
-        // Always update or create the state object to ensure translations are applied
-        await this.adapter.setObjectAsync(id, {
-            type: 'state',
-            common: {
-                name,
-                role: common.role,
-                type: common.type,
-                unit: common.unit,
-                read: true,
-                write: false,
-            },
-            native: {},
-        });
+        const signature = StateManager.stateSignature(name, common.role, common.type, common.unit);
+        if (this.objectSignatures.get(id) !== signature) {
+            await this.adapter.setObjectAsync(id, {
+                type: 'state',
+                common: {
+                    name,
+                    role: common.role,
+                    type: common.type,
+                    unit: common.unit,
+                    read: true,
+                    write: false,
+                },
+                native: {},
+            });
+            this.objectSignatures.set(id, signature);
+        }
         this.createdStates.add(id);
 
         // Only write state value if:
@@ -133,7 +150,7 @@ export class StateManager {
         // existing states (e.g. when new fields are added to a dynamic resource).
         if (!stateAlreadyExisted || value !== null) {
             const normalizedValue = value === undefined ? null : (value as ioBroker.StateValue);
-            await this.adapter.setStateAsync(id, normalizedValue, true);
+            await this.adapter.setStateChangedAsync(id, normalizedValue, true);
         }
     }
 
@@ -145,7 +162,7 @@ export class StateManager {
      */
     async updateState(id: string, value: unknown): Promise<void> {
         const normalizedValue = value === undefined ? null : (value as ioBroker.StateValue);
-        await this.adapter.setStateAsync(id, normalizedValue, true);
+        await this.adapter.setStateChangedAsync(id, normalizedValue, true);
     }
 
     /**
@@ -175,6 +192,28 @@ export class StateManager {
 
         this.createdChannels.clear();
         this.createdStates.clear();
+        this.objectSignatures.clear();
+    }
+
+    /**
+     * Forget cached object definitions below a prefix (e.g. after a resource was deleted),
+     * so the objects are written again if the resource comes back.
+     *
+     * @param prefix - Relative object id prefix without trailing dot
+     */
+    forgetObjects(prefix: string): void {
+        for (const set of [this.createdStates, this.createdChannels]) {
+            for (const id of set) {
+                if (id === prefix || id.startsWith(`${prefix}.`)) {
+                    set.delete(id);
+                }
+            }
+        }
+        for (const id of this.objectSignatures.keys()) {
+            if (id === prefix || id.startsWith(`${prefix}.`)) {
+                this.objectSignatures.delete(id);
+            }
+        }
     }
 
     /**
@@ -208,6 +247,30 @@ export class StateManager {
     clear(): void {
         this.createdChannels.clear();
         this.createdStates.clear();
+        this.objectSignatures.clear();
+    }
+
+    /**
+     * Build the comparison key for a state object.
+     *
+     * @param name - Object name (string or translations)
+     * @param role - ioBroker role
+     * @param type - Value type
+     * @param unit - Unit (optional)
+     * @returns Serialized signature
+     */
+    static stateSignature(name: unknown, role: unknown, type: unknown, unit: unknown): string {
+        return JSON.stringify([name ?? null, role ?? null, type ?? null, unit ?? null]);
+    }
+
+    /**
+     * Build the comparison key for a channel object.
+     *
+     * @param name - Channel name (string or translations)
+     * @returns Serialized signature
+     */
+    static channelSignature(name: unknown): string {
+        return JSON.stringify([name ?? null]);
     }
 
     private shouldKeepObject(objectId: string, allowedIds: Set<string>): boolean {
@@ -258,15 +321,18 @@ export class StateManager {
                 name = `Package ${parts[3]}`;
             }
 
-            // Always update the object to ensure the name is correct
-            // This will create it if it doesn't exist, or update it if it does
-            await this.adapter.setObjectAsync(channelId, {
-                type: 'channel',
-                common: {
-                    name,
-                },
-                native: {},
-            });
+            // Write the channel only if it is new or its name changed
+            const signature = StateManager.channelSignature(name);
+            if (this.objectSignatures.get(channelId) !== signature) {
+                await this.adapter.extendObjectAsync(channelId, {
+                    type: 'channel',
+                    common: {
+                        name,
+                    },
+                    native: {},
+                });
+                this.objectSignatures.set(channelId, signature);
+            }
 
             this.createdChannels.add(channelId);
         }
