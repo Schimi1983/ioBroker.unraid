@@ -1,6 +1,6 @@
 /**
  * Capability flags for Unraid API features that may not exist on older servers.
- * Detected once at adapter startup via GraphQL introspection; referenced by query
+ * Detected once at adapter startup via a validation-only probe (see UnraidApolloClient.probeCapabilities); referenced by query
  * builder and control manager to gate feature-specific fields and mutations.
  */
 export interface Capabilities {
@@ -42,4 +42,33 @@ export function allCapabilitiesEnabled(): Capabilities {
         dockerUnpause: true,
         dockerUpdate: true,
     };
+}
+
+/** Fields whose absence disables a capability, as reported by "Cannot query field" validation errors */
+export const CAPABILITY_FIELDS: Readonly<Record<string, CapabilityKey>> = {
+    temperature: 'temperatureMetrics',
+    isUpdateAvailable: 'dockerUpdateFlag',
+    containerUpdateStatuses: 'dockerContainerUpdateStatuses',
+    pause: 'dockerPause',
+    unpause: 'dockerUnpause',
+    updateContainer: 'dockerUpdate',
+};
+
+/**
+ * Derive capability flags from GraphQL validation error messages.
+ * Every capability is enabled unless its field is reported as unknown.
+ *
+ * @param messages - Error messages returned by the server
+ * @returns Capability flags
+ */
+export function capabilitiesFromValidationErrors(messages: readonly string[]): Capabilities {
+    const capabilities = allCapabilitiesEnabled();
+    for (const message of messages) {
+        const match = /Cannot query field "([^"]+)"/.exec(message);
+        const capability = match ? CAPABILITY_FIELDS[match[1]] : undefined;
+        if (capability) {
+            capabilities[capability] = false;
+        }
+    }
+    return capabilities;
 }

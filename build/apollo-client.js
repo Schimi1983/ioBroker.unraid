@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MEMORY_SUBSCRIPTION = exports.CPU_SUBSCRIPTION = exports.METRICS_SUBSCRIPTION = exports.UnraidApolloClient = void 0;
+exports.MEMORY_SUBSCRIPTION = exports.CPU_SUBSCRIPTION = exports.METRICS_SUBSCRIPTION = exports.UnraidApolloClient = exports.CAPABILITY_PROBE_MUTATION = exports.CAPABILITY_PROBE_QUERY = void 0;
 const core_1 = require("@apollo/client/core");
 const subscriptions_1 = require("@apollo/client/link/subscriptions");
 const utilities_1 = require("@apollo/client/utilities");
@@ -11,6 +11,33 @@ const graphql_ws_1 = require("graphql-ws");
 const ws_1 = __importDefault(require("ws"));
 const undici_1 = require("undici");
 const capabilities_1 = require("./shared/capabilities");
+/** Maximum duration of a polling query before it is aborted */
+const QUERY_TIMEOUT_MS = 30_000;
+/** Maximum duration of a control action (container updates pull images and can take minutes) */
+const MUTATION_TIMEOUT_MS = 10 * 60_000;
+/**
+ * Probe for optional query fields. `$probe` is intentionally unused so the document
+ * is rejected during validation and never executed.
+ */
+exports.CAPABILITY_PROBE_QUERY = `
+    query UnraidCapabilityProbe($probe: Boolean) {
+        metrics { temperature { id } }
+        docker { containerUpdateStatuses { __typename } containers { isUpdateAvailable } }
+    }
+`;
+/**
+ * Probe for optional mutations. `$probe` is intentionally unused so the document
+ * is rejected during validation and never executed.
+ */
+exports.CAPABILITY_PROBE_MUTATION = `
+    mutation UnraidCapabilityProbe($id: PrefixedID!, $probe: Boolean) {
+        docker {
+            pause(id: $id) { id }
+            unpause(id: $id) { id }
+            updateContainer(id: $id) { id }
+        }
+    }
+`;
 /**
  * Apollo GraphQL client wrapper for Unraid server communication.
  * Handles both HTTP queries/mutations and WebSocket subscriptions.
@@ -26,6 +53,10 @@ class UnraidApolloClient {
     apiToken;
     /** Logger instance for structured logging */
     logger;
+    /** fetch implementation used for HTTP requests (honours the self-signed setting) */
+    fetchImpl;
+    /** Shared dispatcher for self-signed HTTPS connections */
+    selfSignedAgent;
     /**
      * Creates a new Unraid Apollo client instance
      *
@@ -35,19 +66,17 @@ class UnraidApolloClient {
         this.baseUrl = options.baseUrl.replace(/\/$/, '');
         this.apiToken = options.apiToken;
         this.logger = options.logger;
-        // Create custom fetch for self-signed certificates if needed
-        const customFetch = options.allowSelfSigned && this.baseUrl.startsWith('https://')
-            ? (url, init) => {
-                return (0, undici_1.fetch)(url, {
-                    ...init,
-                    dispatcher: new undici_1.Agent({
-                        connect: {
-                            rejectUnauthorized: false,
-                        },
-                    }),
-                });
-            }
+        // Create custom fetch for self-signed certificates if needed.
+        // Note: The dispatcher is created once and reused; creating a new undici Agent
+        // per request (previous behaviour) opened a fresh connection pool on every poll.
+        const selfSignedAgent = options.allowSelfSigned && this.baseUrl.startsWith('https://')
+            ? new undici_1.Agent({ connect: { rejectUnauthorized: false } })
             : undefined;
+        const customFetch = selfSignedAgent
+            ? (url, init) => (0, undici_1.fetch)(url, { ...init, dispatcher: selfSignedAgent })
+            : undefined;
+        this.fetchImpl = (customFetch ?? globalThis.fetch);
+        this.selfSignedAgent = selfSignedAgent;
         // Create WebSocket client for subscriptions
         const wsUrl = `${this.baseUrl.replace(/^http/, 'ws')}/graphql`;
         // Create a custom WebSocket class that includes our options
@@ -111,6 +140,7 @@ class UnraidApolloClient {
     async query(query) {
         const result = await this.client.query({
             query: (0, core_1.gql)(query),
+            context: { fetchOptions: { signal: AbortSignal.timeout(QUERY_TIMEOUT_MS) } },
         });
         return result.data;
     }
@@ -127,6 +157,7 @@ class UnraidApolloClient {
             const result = await this.client.mutate({
                 mutation: (0, core_1.gql)(mutation),
                 variables,
+                context: { fetchOptions: { signal: AbortSignal.timeout(MUTATION_TIMEOUT_MS) } },
             });
             return result.data;
         }
@@ -159,46 +190,57 @@ class UnraidApolloClient {
         });
     }
     /**
-     * Probe the Unraid GraphQL schema for optional features.
-     * Falls back to "all enabled" on errors so established installations
-     * do not lose functionality if introspection is rate-limited or blocked.
+     * Detect optional API features without GraphQL introspection.
      *
-     * @returns Promise resolving to detected capability flags
+     * Note: Unraid blocks `__schema`/`__type` in production, so the previous
+     * introspection probe always failed. Instead we send probe documents that contain an
+     * unused variable: the server rejects them during validation (NoUnusedVariablesRule),
+     * so nothing is executed (no disk access, no container action), and the same
+     * validation run reports every field the schema does not know ("Cannot query field").
+     *
+     * @returns Promise resolving to detected capability flags (all enabled if the probe is inconclusive)
      */
-    async introspectCapabilities() {
-        const probeQuery = `
-            query UnraidCapabilityProbe {
-                metricsType: __type(name: "Metrics") { fields { name } }
-                dockerType: __type(name: "Docker") { fields { name } }
-                dockerContainerType: __type(name: "DockerContainer") { fields { name } }
-                dockerMutationsType: __type(name: "DockerMutations") { fields { name } }
-            }
-        `;
+    async probeCapabilities() {
         try {
-            const result = await this.query(probeQuery);
-            const has = (fields, name) => Array.isArray(fields) && fields.some(f => f.name === name);
-            const metricsFields = result?.metricsType?.fields;
-            const dockerFields = result?.dockerType?.fields;
-            const containerFields = result?.dockerContainerType?.fields;
-            const mutationFields = result?.dockerMutationsType?.fields;
-            const capabilities = {
-                temperatureMetrics: has(metricsFields, 'temperature'),
-                dockerUpdateFlag: has(containerFields, 'isUpdateAvailable'),
-                dockerContainerUpdateStatuses: has(dockerFields, 'containerUpdateStatuses'),
-                dockerPause: has(mutationFields, 'pause'),
-                dockerUnpause: has(mutationFields, 'unpause'),
-                dockerUpdate: has(mutationFields, 'updateContainer'),
-            };
-            this.logger.info(`Unraid capabilities: temperature=${capabilities.temperatureMetrics}, ` +
-                `dockerUpdateFlag=${capabilities.dockerUpdateFlag}, ` +
-                `dockerUpdateStatuses=${capabilities.dockerContainerUpdateStatuses}, ` +
-                `pause=${capabilities.dockerPause}, unpause=${capabilities.dockerUnpause}, ` +
-                `update=${capabilities.dockerUpdate}`);
+            const messages = [
+                ...(await this.validateOnly(exports.CAPABILITY_PROBE_QUERY)),
+                ...(await this.validateOnly(exports.CAPABILITY_PROBE_MUTATION)),
+            ];
+            if (!messages.some(m => m.includes('is never used'))) {
+                // The server did not validate the probe as expected (e.g. auth error or proxy) — keep defaults.
+                this.logger.debug(`Capability probe inconclusive: ${messages.join(' | ') || 'no errors returned'}`);
+                return (0, capabilities_1.allCapabilitiesEnabled)();
+            }
+            const capabilities = (0, capabilities_1.capabilitiesFromValidationErrors)(messages);
+            this.logger.debug(`Unraid capabilities: ${JSON.stringify(capabilities)}`);
             return capabilities;
         }
         catch (error) {
-            this.logger.warn(`Capability introspection failed, assuming all features are available: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.debug(`Capability probe failed, assuming all features are available: ${error instanceof Error ? error.message : String(error)}`);
             return (0, capabilities_1.allCapabilitiesEnabled)();
+        }
+    }
+    /**
+     * POST a GraphQL document and return the error messages of the response.
+     * Used only for probe documents that are guaranteed to fail validation.
+     *
+     * @param document - GraphQL document
+     * @returns Error messages reported by the server
+     */
+    async validateOnly(document) {
+        const response = await this.fetchImpl(`${this.baseUrl}/graphql`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-api-key': this.apiToken },
+            body: JSON.stringify({ query: document }),
+            signal: AbortSignal.timeout(QUERY_TIMEOUT_MS),
+        });
+        const text = await response.text();
+        try {
+            const body = JSON.parse(text);
+            return (body.errors ?? []).map(e => String(e.message ?? ''));
+        }
+        catch {
+            return [`HTTP ${response.status}`];
         }
     }
     /**
@@ -250,6 +292,7 @@ class UnraidApolloClient {
     async dispose() {
         this.client.stop();
         await this.wsClient.dispose();
+        await this.selfSignedAgent?.close();
     }
     /**
      * Check if the WebSocket connection is established

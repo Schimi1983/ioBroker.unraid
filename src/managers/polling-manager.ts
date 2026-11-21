@@ -12,6 +12,12 @@ export class PollingManager {
     private stopRequested = false;
     private currentDefinitions: readonly DomainDefinition[] = [];
     private reportedMissingFields = new Set<string>();
+    /** True while a poll request is running */
+    private pollRunning = false;
+    /** A poll was requested while another one was running */
+    private pollPending = false;
+    /** Last reported error (used to log repeated failures only once) */
+    private lastError?: string;
 
     /**
      * Create a new polling manager
@@ -20,12 +26,14 @@ export class PollingManager {
      * @param apolloClient - Apollo client for GraphQL queries
      * @param capabilities - Mutable capability flags; updated on runtime fallback
      * @param onDataReceived - Callback function when data is received
+     * @param onConnectionChange - Callback with the result of every poll (true = server answered)
      */
     constructor(
         private readonly adapter: AdapterInterface,
         private readonly apolloClient: UnraidApolloClient,
         private readonly capabilities: Capabilities,
         private readonly onDataReceived: (data: Record<string, unknown>) => Promise<void>,
+        private readonly onConnectionChange: (connected: boolean) => Promise<void> = async () => {},
     ) {}
 
     /**
@@ -42,13 +50,9 @@ export class PollingManager {
         this.currentDefinitions = definitions;
 
         // Execute first poll immediately
-        void this.pollOnce(definitions)
-            .catch(error => {
-                this.adapter.log.error(`Initial polling failed: ${this.describeError(error)}`);
-            })
-            .finally(() => {
-                this.scheduleNextPoll(pollIntervalMs, definitions);
-            });
+        void this.pollOnce(definitions).finally(() => {
+            this.scheduleNextPoll(pollIntervalMs, definitions);
+        });
     }
 
     /**
@@ -60,9 +64,7 @@ export class PollingManager {
             return;
         }
 
-        void this.pollOnce(this.currentDefinitions).catch(error => {
-            this.adapter.log.error(`Manual polling failed: ${this.describeError(error)}`);
-        });
+        void this.pollOnce(this.currentDefinitions);
     }
 
     /**
@@ -78,13 +80,19 @@ export class PollingManager {
     }
 
     /**
-     * Execute a single polling cycle
+     * Execute a single polling cycle. Never throws: errors are reported once via the log
+     * and through `onConnectionChange(false)`.
      *
      * @param definitions - Array of domain definitions to poll
      */
     private async pollOnce(definitions: readonly DomainDefinition[]): Promise<void> {
         if (!definitions.length) {
             this.adapter.log.debug('Skipping poll because no domains are selected.');
+            return;
+        }
+        if (this.pollRunning) {
+            // Note: A control action triggers an extra poll; never run two requests in parallel
+            this.pollPending = true;
             return;
         }
 
@@ -94,10 +102,21 @@ export class PollingManager {
             return;
         }
 
+        this.pollRunning = true;
         try {
             const data = await this.apolloClient.query<Record<string, unknown>>(query);
             this.logGraphQLResponse(data);
-            await this.onDataReceived(data);
+            await this.onConnectionChange(true);
+            if (this.lastError) {
+                this.adapter.log.info('Connection to the Unraid server restored.');
+                this.lastError = undefined;
+            }
+            try {
+                await this.onDataReceived(data);
+            } catch (processingError) {
+                // Server answered; a failure here is local (objects DB) and not a connection problem
+                this.adapter.log.error(`Processing Unraid data failed: ${this.describeError(processingError)}`);
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             // Handle "Cannot query field X on type Y" by disabling the related capability
@@ -112,11 +131,31 @@ export class PollingManager {
                     return;
                 }
             }
-            if (error instanceof Error) {
-                throw new Error(`GraphQL error: ${error.message}`);
+            await this.onConnectionChange(false);
+            this.reportError(error);
+        } finally {
+            this.pollRunning = false;
+            if (this.pollPending && !this.stopRequested) {
+                this.pollPending = false;
+                void this.pollOnce(this.currentDefinitions);
             }
-            throw error;
         }
+    }
+
+    /**
+     * Log a polling error in plain words. The same error is logged only once;
+     * repetitions go to the debug log until the connection recovers.
+     *
+     * @param error - Error thrown by the GraphQL client
+     */
+    private reportError(error: unknown): void {
+        const text = describePollingError(error);
+        if (text === this.lastError) {
+            this.adapter.log.debug(`Polling still failing: ${text}`);
+            return;
+        }
+        this.lastError = text;
+        this.adapter.log.error(text);
     }
 
     /**
@@ -161,13 +200,9 @@ export class PollingManager {
         }
 
         this.pollTimer = this.adapter.setTimeout(() => {
-            void this.pollOnce(definitions)
-                .catch(error => {
-                    this.adapter.log.error(`Polling failed: ${this.describeError(error)}`);
-                })
-                .finally(() => {
-                    this.scheduleNextPoll(pollIntervalMs, definitions);
-                });
+            void this.pollOnce(definitions).finally(() => {
+                this.scheduleNextPoll(pollIntervalMs, definitions);
+            });
         }, pollIntervalMs);
     }
 
@@ -213,4 +248,29 @@ export class PollingManager {
         }
         return String(error);
     }
+}
+
+/**
+ * Turn a GraphQL/network error into a short, user-facing log message.
+ *
+ * @param error - Error thrown by Apollo Client or fetch
+ * @returns Message for the ioBroker log
+ */
+export function describePollingError(error: unknown): string {
+    const err = error as { message?: string; name?: string; statusCode?: number; cause?: { code?: string } };
+    const message = String(err?.message ?? error);
+    const status = typeof err?.statusCode === 'number' ? err.statusCode : undefined;
+    const code =
+        err?.cause?.code ?? /\b(ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|ECONNRESET)\b/.exec(message)?.[1];
+
+    if (status === 401 || status === 403 || /\b(401|403)\b|forbidden|unauthori[sz]ed/i.test(message)) {
+        return 'Unraid rejected the API key (check the key and its permissions in Unraid: Settings > Management Access > API Keys).';
+    }
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError' || /aborted|timeout/i.test(message)) {
+        return 'Unraid did not answer in time (request timed out). Will retry with the next poll.';
+    }
+    if (code) {
+        return `Unraid server not reachable (${code}). Check the address in the adapter settings.`;
+    }
+    return `Polling failed: ${message}`;
 }

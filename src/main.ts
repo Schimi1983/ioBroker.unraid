@@ -49,6 +49,7 @@ class UnraidAdapter extends Adapter {
      * Initializes connections and starts polling.
      */
     private async onReady(): Promise<void> {
+        await this.setConnected(false);
         try {
             // Validate configuration
             const config = validateConfig(this.config, this.log);
@@ -82,7 +83,7 @@ class UnraidAdapter extends Adapter {
             // Probe optional API features to stay compatible with older Unraid versions.
             // Mutating this.capabilities in place means PollingManager and ControlManager
             // see runtime updates (e.g. if we later disable a flag via the error-path).
-            const probed = await this.apolloClient.introspectCapabilities();
+            const probed = await this.apolloClient.probeCapabilities();
             Object.assign(this.capabilities, probed);
 
             // Initialize polling manager (shares the capabilities reference)
@@ -91,6 +92,7 @@ class UnraidAdapter extends Adapter {
                 this.apolloClient,
                 this.capabilities,
                 this.handlePolledData.bind(this),
+                this.setConnected.bind(this),
             );
 
             // Initialize control manager (shares the same capabilities reference and
@@ -116,8 +118,8 @@ class UnraidAdapter extends Adapter {
             //     await this.initializeSubscriptions();
             // }
 
-            // Subscribe only to our own state changes
-            this.subscribeStates(`${this.namespace}.*`);
+            // Subscribe only to control buttons (the only writable states)
+            this.subscribeStates('*.commands.*');
 
             // Start polling
             this.pollingManager.start(config.pollIntervalSeconds * 1000, this.selectedDefinitions);
@@ -210,6 +212,15 @@ class UnraidAdapter extends Adapter {
         }
     }
 
+    /**
+     * Update `info.connection` only when the value changes.
+     *
+     * @param connected - Whether the last request to Unraid succeeded
+     */
+    private async setConnected(connected: boolean): Promise<void> {
+        await this.setStateChangedAsync('info.connection', connected, true);
+    }
+
     private async onStateChange(id: string, state: ioBroker.State | null | undefined): Promise<void> {
         // Delegate control operations to ControlManager
         if (this.controlManager) {
@@ -247,6 +258,7 @@ class UnraidAdapter extends Adapter {
             this.controlManager = undefined;
             this.objectManager = undefined;
 
+            void this.setState('info.connection', false, true);
             this.log.debug('Adapter cleanup completed');
         } catch (error) {
             this.log.error(`Error during adapter cleanup: ${this.describeError(error)}`);

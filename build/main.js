@@ -44,6 +44,7 @@ class UnraidAdapter extends adapter_core_1.Adapter {
      * Initializes connections and starts polling.
      */
     async onReady() {
+        await this.setConnected(false);
         try {
             // Validate configuration
             const config = (0, adapter_config_1.validateConfig)(this.config, this.log);
@@ -72,10 +73,10 @@ class UnraidAdapter extends adapter_core_1.Adapter {
             // Probe optional API features to stay compatible with older Unraid versions.
             // Mutating this.capabilities in place means PollingManager and ControlManager
             // see runtime updates (e.g. if we later disable a flag via the error-path).
-            const probed = await this.apolloClient.introspectCapabilities();
+            const probed = await this.apolloClient.probeCapabilities();
             Object.assign(this.capabilities, probed);
             // Initialize polling manager (shares the capabilities reference)
-            this.pollingManager = new polling_manager_1.PollingManager(this, this.apolloClient, this.capabilities, this.handlePolledData.bind(this));
+            this.pollingManager = new polling_manager_1.PollingManager(this, this.apolloClient, this.capabilities, this.handlePolledData.bind(this), this.setConnected.bind(this));
             // Initialize control manager (shares the same capabilities reference and
             // gets a callback to request an immediate re-poll after a successful mutation).
             this.controlManager = new control_manager_1.ControlManager(this, this.apolloClient, this.capabilities, () => {
@@ -94,8 +95,8 @@ class UnraidAdapter extends adapter_core_1.Adapter {
             // if (config.useSubscriptions) {
             //     await this.initializeSubscriptions();
             // }
-            // Subscribe only to our own state changes
-            this.subscribeStates(`${this.namespace}.*`);
+            // Subscribe only to control buttons (the only writable states)
+            this.subscribeStates('*.commands.*');
             // Start polling
             this.pollingManager.start(config.pollIntervalSeconds * 1000, this.selectedDefinitions);
         }
@@ -176,6 +177,14 @@ class UnraidAdapter extends adapter_core_1.Adapter {
             await this.stateManager.applyDefinition(definition, data);
         }
     }
+    /**
+     * Update `info.connection` only when the value changes.
+     *
+     * @param connected - Whether the last request to Unraid succeeded
+     */
+    async setConnected(connected) {
+        await this.setStateChangedAsync('info.connection', connected, true);
+    }
     async onStateChange(id, state) {
         // Delegate control operations to ControlManager
         if (this.controlManager) {
@@ -209,6 +218,7 @@ class UnraidAdapter extends adapter_core_1.Adapter {
             this.pollingManager = undefined;
             this.controlManager = undefined;
             this.objectManager = undefined;
+            void this.setState('info.connection', false, true);
             this.log.debug('Adapter cleanup completed');
         }
         catch (error) {
