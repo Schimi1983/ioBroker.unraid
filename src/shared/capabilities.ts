@@ -16,6 +16,10 @@ export interface Capabilities {
     dockerUnpause: boolean;
     /** DockerMutations.updateContainer */
     dockerUpdate: boolean;
+    /** DockerMutations.restart */
+    dockerRestart: boolean;
+    /** DockerMutations.updateAllContainers */
+    dockerUpdateAll: boolean;
 }
 
 export type CapabilityKey = keyof Capabilities;
@@ -27,6 +31,8 @@ export const ALL_CAPABILITIES_DISABLED: Capabilities = {
     dockerPause: false,
     dockerUnpause: false,
     dockerUpdate: false,
+    dockerRestart: false,
+    dockerUpdateAll: false,
 };
 
 /**
@@ -41,6 +47,8 @@ export function allCapabilitiesEnabled(): Capabilities {
         dockerPause: true,
         dockerUnpause: true,
         dockerUpdate: true,
+        dockerRestart: true,
+        dockerUpdateAll: true,
     };
 }
 
@@ -52,6 +60,8 @@ export const CAPABILITY_FIELDS: Readonly<Record<string, CapabilityKey>> = {
     pause: 'dockerPause',
     unpause: 'dockerUnpause',
     updateContainer: 'dockerUpdate',
+    restart: 'dockerRestart',
+    updateAllContainers: 'dockerUpdateAll',
 };
 
 /**

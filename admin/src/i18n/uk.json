@@ -65,5 +65,9 @@
     "domains.rclone": "Rclone",
     "domains.metrics.temperature": "Температура",
     "domains.metrics.temperature.board": "Датчики материнської плати (Unraid 7.2+)",
-    "domains.docker.updates": "Наявність оновлень (Unraid 7.2+)"
+    "domains.docker.updates": "Наявність оновлень (Unraid 7.2+)",
+    "domains.array.parityCheck": "Перевірка парності",
+    "domains.array.parityCheck_help": "Статус, прогрес і помилки поточної або останньої перевірки парності",
+    "domains.notifications.overview": "Непрочитані сповіщення",
+    "domains.notifications.overview_help": "Кількість непрочитаних сповіщень Unraid (тривоги, попередження, повідомлення) – напр., щоб пересилати попередження на телефон"
 }

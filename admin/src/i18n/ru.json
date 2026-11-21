@@ -65,5 +65,9 @@
     "domains.rclone": "Rclone",
     "domains.metrics.temperature": "Температура",
     "domains.metrics.temperature.board": "Датчики материнской платы (Unraid 7.2+)",
-    "domains.docker.updates": "Доступность обновлений (Unraid 7.2+)"
+    "domains.docker.updates": "Доступность обновлений (Unraid 7.2+)",
+    "domains.array.parityCheck": "Проверка чётности",
+    "domains.array.parityCheck_help": "Статус, прогресс и ошибки текущей или последней проверки чётности",
+    "domains.notifications.overview": "Непрочитанные уведомления",
+    "domains.notifications.overview_help": "Количество непрочитанных уведомлений Unraid (тревоги, предупреждения, сообщения) – например, для пересылки на телефон"
 }

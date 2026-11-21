@@ -65,5 +65,9 @@
     "domains.rclone": "Rclone",
     "domains.metrics.temperature": "Temperature",
     "domains.metrics.temperature.board": "Mainboard sensors (Unraid 7.2+)",
-    "domains.docker.updates": "Update availability (Unraid 7.2+)"
+    "domains.docker.updates": "Update availability (Unraid 7.2+)",
+    "domains.array.parityCheck": "Parity check",
+    "domains.array.parityCheck_help": "Status, progress and errors of the running or last parity check",
+    "domains.notifications.overview": "Unread notifications",
+    "domains.notifications.overview_help": "Number of unread Unraid notifications (alerts, warnings, information) – e.g. to forward warnings to your phone"
 }

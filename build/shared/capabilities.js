@@ -10,6 +10,8 @@ exports.ALL_CAPABILITIES_DISABLED = {
     dockerPause: false,
     dockerUnpause: false,
     dockerUpdate: false,
+    dockerRestart: false,
+    dockerUpdateAll: false,
 };
 /**
  * Create a capabilities object with all flags initially enabled.
@@ -23,6 +25,8 @@ function allCapabilitiesEnabled() {
         dockerPause: true,
         dockerUnpause: true,
         dockerUpdate: true,
+        dockerRestart: true,
+        dockerUpdateAll: true,
     };
 }
 /** Fields whose absence disables a capability, as reported by "Cannot query field" validation errors */
@@ -33,6 +37,8 @@ exports.CAPABILITY_FIELDS = {
     pause: 'dockerPause',
     unpause: 'dockerUnpause',
     updateContainer: 'dockerUpdate',
+    restart: 'dockerRestart',
+    updateAllContainers: 'dockerUpdateAll',
 };
 /**
  * Derive capability flags from GraphQL validation error messages.

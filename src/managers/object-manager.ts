@@ -146,7 +146,7 @@ export class ObjectManager {
         'array.parities': ['array.parities'],
         'array.caches': ['array.caches'],
         'docker.containers': ['docker.containers'],
-        'docker.updates': ['docker.updates'],
+        'docker.updates': ['docker.updates', 'docker.commands'],
         'shares.list': ['shares'],
         'vms.list': ['vms'],
         'metrics.temperature.board': ['metrics.temperature.board'],

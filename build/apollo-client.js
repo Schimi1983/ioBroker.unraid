@@ -35,6 +35,8 @@ exports.CAPABILITY_PROBE_MUTATION = `
             pause(id: $id) { id }
             unpause(id: $id) { id }
             updateContainer(id: $id) { id }
+            restart(id: $id) { id }
+            updateAllContainers { id }
         }
     }
 `;

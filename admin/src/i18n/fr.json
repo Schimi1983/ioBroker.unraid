@@ -65,5 +65,9 @@
     "domains.rclone": "Rclone",
     "domains.metrics.temperature": "Température",
     "domains.metrics.temperature.board": "Capteurs de la carte mère (Unraid 7.2+)",
-    "domains.docker.updates": "Disponibilité des mises à jour (Unraid 7.2+)"
+    "domains.docker.updates": "Disponibilité des mises à jour (Unraid 7.2+)",
+    "domains.array.parityCheck": "Contrôle de parité",
+    "domains.array.parityCheck_help": "État, progression et erreurs du contrôle de parité en cours ou du dernier",
+    "domains.notifications.overview": "Notifications non lues",
+    "domains.notifications.overview_help": "Nombre de notifications Unraid non lues (alertes, avertissements, informations) – par ex. pour transférer les avertissements vers votre téléphone"
 }

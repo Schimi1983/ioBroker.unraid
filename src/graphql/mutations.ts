@@ -52,6 +52,28 @@ export const DOCKER_UNPAUSE_MUTATION = `
     }
 `;
 
+export const DOCKER_RESTART_MUTATION = `
+    mutation RestartDockerContainer($id: PrefixedID!) {
+        docker {
+            restart(id: $id) {
+                id
+                state
+                status
+            }
+        }
+    }
+`;
+
+export const DOCKER_UPDATE_ALL_MUTATION = `
+    mutation UpdateAllDockerContainers {
+        docker {
+            updateAllContainers {
+                id
+            }
+        }
+    }
+`;
+
 export const DOCKER_UPDATE_MUTATION = `
     mutation UpdateDockerContainer($id: PrefixedID!) {
         docker {

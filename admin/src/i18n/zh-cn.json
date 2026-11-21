@@ -65,5 +65,9 @@
     "domains.rclone": "Rclone",
     "domains.metrics.temperature": "温度",
     "domains.metrics.temperature.board": "主板传感器 (Unraid 7.2+)",
-    "domains.docker.updates": "更新可用性 (Unraid 7.2+)"
+    "domains.docker.updates": "更新可用性 (Unraid 7.2+)",
+    "domains.array.parityCheck": "奇偶校验",
+    "domains.array.parityCheck_help": "当前或上次奇偶校验的状态、进度和错误",
+    "domains.notifications.overview": "未读通知",
+    "domains.notifications.overview_help": "未读 Unraid 通知数量（警报、警告、信息）— 例如将警告转发到手机"
 }

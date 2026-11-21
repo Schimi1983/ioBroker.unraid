@@ -33,6 +33,8 @@ describe('capability probe (validation only)', () => {
             dockerPause: true,
             dockerUnpause: true,
             dockerUpdate: true,
+            dockerRestart: true,
+            dockerUpdateAll: true,
         });
     });
 
@@ -51,5 +53,6 @@ describe('capability probe (validation only)', () => {
         expect(caps.dockerUpdateFlag).to.equal(false);
         expect(caps.dockerPause).to.equal(false);
         expect(caps.dockerUnpause).to.equal(true);
+        expect(caps.dockerRestart).to.equal(true);
     });
 });
