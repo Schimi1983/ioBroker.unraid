@@ -105,6 +105,7 @@ The adapter creates a structured tree of objects for the monitored data:
 ### **WORK IN PROGRESS**
 
 - (Schimi1983) Mainboard sensors: only real temperatures are shown now. Unraid also reported voltages, fan speeds and power as "temperatures" in °C; these entries are removed automatically
+- (Schimi1983) Less load on the Unraid server: container sizes are only requested every 30 minutes. Docker has to calculate the size of every container for this value, which is expensive and rarely changes
 
 ### 0.11.0 (2026-11-21)
 

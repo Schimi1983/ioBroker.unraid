@@ -404,7 +404,11 @@ class DynamicResourceManager {
                 await this.stateManager.updateState(`${containerPrefix}.state`, (0, data_transformers_1.toStringOrNull)(c.state));
                 await this.stateManager.updateState(`${containerPrefix}.status`, (0, data_transformers_1.toStringOrNull)(c.status));
                 await this.stateManager.updateState(`${containerPrefix}.autoStart`, (0, data_transformers_1.toBooleanOrNull)(c.autoStart));
-                await this.stateManager.updateState(`${containerPrefix}.sizeGb`, (0, data_transformers_1.bytesToGigabytes)(c.sizeRootFs));
+                // sizeRootFs is only requested every 30 minutes (expensive for Docker);
+                // keep the last value when the field is not part of this response.
+                if ('sizeRootFs' in c) {
+                    await this.stateManager.updateState(`${containerPrefix}.sizeGb`, (0, data_transformers_1.bytesToGigabytes)(c.sizeRootFs));
+                }
                 if (this.dockerIsUpdateAvailableCreated.has(containerPrefix)) {
                     await this.stateManager.updateState(`${containerPrefix}.isUpdateAvailable`, resolveIsUpdateAvailable(name, c.isUpdateAvailable));
                 }
