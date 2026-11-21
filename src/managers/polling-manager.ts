@@ -1,7 +1,8 @@
 import type { AdapterInterface } from '../types/adapter-types';
 import type { UnraidApolloClient } from '../apollo-client';
 import type { DomainDefinition } from '../shared/unraid-domains';
-import type { Capabilities, CapabilityKey } from '../shared/capabilities';
+import type { Capabilities } from '../shared/capabilities';
+import { CAPABILITY_FIELDS } from '../shared/capabilities';
 import { GraphQLSelectionBuilder } from '../graphql/selection-builder';
 
 /**
@@ -131,6 +132,13 @@ export class PollingManager {
                     return;
                 }
             }
+            if (this.stopRequested) {
+                // The adapter is shutting down: the Apollo client is being disposed while this
+                // request is still in flight. That is not a connection problem, and Apollo
+                // minifies the message to an unhelpful "see go.apollo.dev/c/err" link.
+                this.adapter.log.debug(`Poll aborted during shutdown: ${message}`);
+                return;
+            }
             await this.onConnectionChange(false);
             this.reportError(error);
         } finally {
@@ -167,15 +175,9 @@ export class PollingManager {
      */
     private degradeCapabilitiesFromError(message: string): string[] {
         const disabled: string[] = [];
-        const fieldToCapability: Record<string, CapabilityKey> = {
-            temperature: 'temperatureMetrics',
-            isUpdateAvailable: 'dockerUpdateFlag',
-            containerUpdateStatuses: 'dockerContainerUpdateStatuses',
-            pause: 'dockerPause',
-            unpause: 'dockerUnpause',
-            updateContainer: 'dockerUpdate',
-        };
-        for (const [field, capability] of Object.entries(fieldToCapability)) {
+        // Shared with the startup probe (see capabilitiesFromValidationErrors) so a new
+        // capability only has to be registered in CAPABILITY_FIELDS once.
+        for (const [field, capability] of Object.entries(CAPABILITY_FIELDS)) {
             const regex = new RegExp(`Cannot query field "${field}"`);
             if (regex.test(message) && this.capabilities[capability]) {
                 this.capabilities[capability] = false;
@@ -227,14 +229,40 @@ export class PollingManager {
     private logGraphQLResponse(data: Record<string, unknown>): void {
         try {
             const serialized = JSON.stringify(data);
-            const maxLength = 3000;
-            const output = serialized.length > maxLength ? `${serialized.slice(0, maxLength)}…` : serialized;
-            this.adapter.log.debug(`GraphQL response: ${output}`);
+            // The full response is several KB per poll. Writing it on every cycle made the
+            // debug log unusable (tens of MB per day) while still being cut off at 3000
+            // characters, so it was no good for troubleshooting either. Now: a summary on
+            // debug, and the complete response — uncut — on silly.
+            this.adapter.log.debug(`GraphQL response: ${PollingManager.summarizeResponse(data, serialized.length)}`);
+            this.adapter.log.silly(`GraphQL response: ${serialized}`);
         } catch (error) {
             this.adapter.log.debug(
                 `GraphQL response received but could not be stringified: ${this.describeError(error)}`,
             );
         }
+    }
+
+    /**
+     * Build a one-line summary of a GraphQL response: size plus each root with the
+     * number of entries it carries.
+     *
+     * @param data - GraphQL response data
+     * @param byteLength - Length of the serialized response
+     * @returns Summary such as "11.4 KB | array{5} docker{3} shares[15]"
+     */
+    static summarizeResponse(data: Record<string, unknown>, byteLength: number): string {
+        const shape = (value: unknown): string => {
+            if (Array.isArray(value)) {
+                return `[${value.length}]`;
+            }
+            if (value && typeof value === 'object') {
+                return `{${Object.keys(value).length}}`;
+            }
+            return '';
+        };
+        const roots = Object.entries(data).map(([key, value]) => `${key}${shape(value)}`);
+        const size = byteLength >= 1024 ? `${(byteLength / 1024).toFixed(1)} KB` : `${byteLength} B`;
+        return `${size} | ${roots.join(' ') || '(empty)'}`;
     }
 
     /**

@@ -69,5 +69,5 @@
     "domains.array.parityCheck": "Comprobación de paridad",
     "domains.array.parityCheck_help": "Estado, progreso y errores de la comprobación de paridad actual o última",
     "domains.notifications.overview": "Notificaciones no leídas",
-    "domains.notifications.overview_help": "Número de notificaciones de Unraid no leídas (alertas, advertencias, información) – p. ej. para reenviar advertencias al móvil"
+    "domains.notifications.overview_help": "Número de notificaciones de Unraid no leídas (alertas, advertencias, información), p. ej. para reenviar advertencias al móvil"
 }

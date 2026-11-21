@@ -69,5 +69,5 @@
     "domains.array.parityCheck": "奇偶校验",
     "domains.array.parityCheck_help": "当前或上次奇偶校验的状态、进度和错误",
     "domains.notifications.overview": "未读通知",
-    "domains.notifications.overview_help": "未读 Unraid 通知数量（警报、警告、信息）— 例如将警告转发到手机"
+    "domains.notifications.overview_help": "未读 Unraid 通知数量（警报、警告、信息），例如将警告转发到手机"
 }

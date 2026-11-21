@@ -69,5 +69,5 @@
     "domains.array.parityCheck": "Parity check",
     "domains.array.parityCheck_help": "Status, progress and errors of the running or last parity check",
     "domains.notifications.overview": "Unread notifications",
-    "domains.notifications.overview_help": "Number of unread Unraid notifications (alerts, warnings, information) – e.g. to forward warnings to your phone"
+    "domains.notifications.overview_help": "Number of unread Unraid notifications (alerts, warnings, information), e.g. to forward warnings to your phone"
 }

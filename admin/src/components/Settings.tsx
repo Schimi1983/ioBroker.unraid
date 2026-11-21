@@ -95,10 +95,22 @@ const TreeChildren = styled('div')({
     marginLeft: 28,
 });
 
+/**
+ * Left offset that puts a domain description under its label text rather than at the
+ * row start: 36px for the expand toggle (28 + 8 margin) plus 31px for the checkbox.
+ * The per-level indent (depth * 20) is added inline, the same way TreeRow gets it.
+ */
+const DESCRIPTION_INDENT = 67;
+
+// Deliberately quiet: the description supports the label, it should not compete with it.
 const TreeDescription = styled(Typography)(({ theme }) => ({
-    marginLeft: 36,
+    display: 'block',
+    marginTop: -2,
     marginBottom: 8,
+    fontSize: '0.72rem',
+    lineHeight: 1.4,
     color: theme.palette.text.secondary,
+    opacity: 0.75,
 }));
 
 /**
@@ -393,7 +405,12 @@ class Settings extends React.Component<SettingsProps, SettingsState> {
                     />
                 </TreeRow>
                 {node.description ? (
-                    <TreeDescription variant="caption">{I18n.t(node.description)}</TreeDescription>
+                    <TreeDescription
+                        variant="caption"
+                        style={{ marginLeft: DESCRIPTION_INDENT + depth * 20 }}
+                    >
+                        {I18n.t(node.description)}
+                    </TreeDescription>
                 ) : null}
                 {hasChildren && isExpanded ? (
                     <TreeChildren>

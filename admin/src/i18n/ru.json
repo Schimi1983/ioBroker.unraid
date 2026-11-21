@@ -69,5 +69,5 @@
     "domains.array.parityCheck": "Проверка чётности",
     "domains.array.parityCheck_help": "Статус, прогресс и ошибки текущей или последней проверки чётности",
     "domains.notifications.overview": "Непрочитанные уведомления",
-    "domains.notifications.overview_help": "Количество непрочитанных уведомлений Unraid (тревоги, предупреждения, сообщения) – например, для пересылки на телефон"
+    "domains.notifications.overview_help": "Количество непрочитанных уведомлений Unraid (тревоги, предупреждения, сообщения), например, для пересылки на телефон"
 }

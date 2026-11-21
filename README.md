@@ -104,15 +104,18 @@ The adapter creates a structured tree of objects for the monitored data:
 -->
 ### **WORK IN PROGRESS**
 
-- (Schimi1983) New state `info.connection`: the instance now shows whether the Unraid server answers
-- (Schimi1983) Much less load on ioBroker: objects are only written when they change, values only when they change
-- (Schimi1983) Clear log messages for a wrong API key, an unreachable server or a timeout — each problem is logged once, not on every poll
-- (Schimi1983) Requests time out after 30 seconds (control actions after 10 minutes) and never run in parallel
-- (Schimi1983) Detection of Unraid features works again on current Unraid versions (introspection is blocked by Unraid; the warning at startup is gone)
-- (Schimi1983) New: restart button for every Docker container and a button to update all containers at once (`docker.commands.updateAll`)
+- (Schimi1983) New: a restart button for every Docker container, plus a button to update all containers at once (`docker.commands.updateAll`)
 - (Schimi1983) New data area "Parity check": status, progress, errors, speed, date and duration of the running or last parity check
 - (Schimi1983) New data area "Unread notifications": number of unread Unraid alerts, warnings and information messages
 - (Schimi1983) New state `info.os.bootTime`: when the server was started
+- (ingel81) **Existing instances:** the two new data areas have to be ticked in the adapter settings; only new instances get them automatically
+- (Schimi1983) New state `info.connection`: the instance now shows whether the Unraid server answers
+- (Schimi1983) Detection of Unraid features works again on current Unraid versions; the warning at startup is gone
+- (Schimi1983) Clear log messages for a wrong API key, an unreachable server or a timeout. Each problem is logged once, not on every poll
+- (Schimi1983) The adapter no longer stalls when Unraid stops answering: requests are given up after 30 seconds and never pile up
+- (Schimi1983) Noticeably less load on ioBroker: objects and values are only written when they actually change
+- (ingel81) Security fixes in the network libraries (`undici`, `ws`)
+- (ingel81) Now also tested with Node.js 26
 
 ### 0.10.0 (2026-08-21)
 

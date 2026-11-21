@@ -200,7 +200,7 @@ class UnraidAdapter extends adapter_core_1.Adapter {
         }
         return String(error);
     }
-    onUnload(callback) {
+    async onUnload(callback) {
         try {
             // Stop polling
             this.pollingManager?.stop();
@@ -218,7 +218,9 @@ class UnraidAdapter extends adapter_core_1.Adapter {
             this.pollingManager = undefined;
             this.controlManager = undefined;
             this.objectManager = undefined;
-            void this.setState('info.connection', false, true);
+            // Must be awaited: callback() below lets js-controller tear the process down,
+            // so a fire-and-forget write would race the exit and leave the indicator on true.
+            await this.setStateAsync('info.connection', false, true);
             this.log.debug('Adapter cleanup completed');
         }
         catch (error) {

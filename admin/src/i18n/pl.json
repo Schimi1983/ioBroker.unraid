@@ -69,5 +69,5 @@
     "domains.array.parityCheck": "Sprawdzanie parzystości",
     "domains.array.parityCheck_help": "Status, postęp i błędy bieżącego lub ostatniego sprawdzania parzystości",
     "domains.notifications.overview": "Nieprzeczytane powiadomienia",
-    "domains.notifications.overview_help": "Liczba nieprzeczytanych powiadomień Unraid (alarmy, ostrzeżenia, informacje) – np. aby przekazywać ostrzeżenia na telefon"
+    "domains.notifications.overview_help": "Liczba nieprzeczytanych powiadomień Unraid (alarmy, ostrzeżenia, informacje), np. aby przekazywać ostrzeżenia na telefon"
 }

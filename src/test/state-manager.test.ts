@@ -2,7 +2,9 @@ import { expect } from 'chai';
 
 import { StateManager } from '../managers/state-manager';
 import type { AdapterInterface } from '../types/adapter-types';
-import { describePollingError } from '../managers/polling-manager';
+import { PollingManager, describePollingError } from '../managers/polling-manager';
+import { allCapabilitiesEnabled } from '../shared/capabilities';
+import { domainDefinitions } from '../shared/unraid-domains';
 
 /** Minimal adapter mock that counts object and state writes */
 function createAdapterMock(): { adapter: AdapterInterface; calls: Record<string, number> } {
@@ -70,5 +72,76 @@ describe('describePollingError', () => {
         const error = new Error('The operation was aborted due to timeout');
         error.name = 'TimeoutError';
         expect(describePollingError(error)).to.match(/timed out/);
+    });
+});
+
+describe('GraphQL response logging', () => {
+    it('summarizes roots and size for the debug log', () => {
+        const summary = PollingManager.summarizeResponse(
+            { array: { a: 1, b: 2 }, shares: [1, 2, 3], online: true },
+            11674,
+        );
+        expect(summary).to.equal('11.4 KB | array{2} shares[3] online');
+    });
+
+    it('reports bytes for small responses and marks an empty one', () => {
+        expect(PollingManager.summarizeResponse({}, 2)).to.equal('2 B | (empty)');
+    });
+
+    it('logs the summary on debug and the complete response on silly', () => {
+        const lines: Array<[string, string]> = [];
+        const adapter = {
+            log: {
+                debug: (m: string) => lines.push(['debug', m]),
+                silly: (m: string) => lines.push(['silly', m]),
+                info: () => {},
+                warn: () => {},
+                error: () => {},
+            },
+        };
+        const manager = new PollingManager(adapter as any, {} as any, {} as any, async () => {});
+        const data = { array: { state: 'STARTED' }, shares: [1, 2] };
+        (manager as any).logGraphQLResponse(data);
+
+        const debugLine = lines.find(([level]) => level === 'debug')?.[1] ?? '';
+        const sillyLine = lines.find(([level]) => level === 'silly')?.[1] ?? '';
+        expect(debugLine).to.contain('array{1} shares[2]');
+        expect(debugLine).to.not.contain('STARTED');
+        // silly carries the full payload and is never truncated
+        expect(sillyLine).to.contain(JSON.stringify(data));
+    });
+});
+
+describe('polling during shutdown', () => {
+    it('does not report a connection error once stop() was requested', async () => {
+        const levels: Array<[string, string]> = [];
+        const adapter = {
+            log: {
+                debug: (m: string) => levels.push(['debug', m]),
+                silly: () => {},
+                info: () => {},
+                warn: () => {},
+                error: (m: string) => levels.push(['error', m]),
+            },
+            setTimeout: () => undefined,
+            clearTimeout: () => {},
+        };
+        const client = { query: () => Promise.reject(new Error('An error occurred! See go.apollo.dev/c/err')) };
+        let connectionChanges = 0;
+        const manager = new PollingManager(
+            adapter as any,
+            client as any,
+            allCapabilitiesEnabled(),
+            async () => {},
+            () => {
+                connectionChanges++;
+                return Promise.resolve();
+            },
+        );
+        manager.stop();
+        await (manager as any).pollOnce(domainDefinitions.slice(0, 1));
+
+        expect(levels.filter(([l]) => l === 'error')).to.deep.equal([]);
+        expect(connectionChanges, 'connection state must not flip during shutdown').to.equal(0);
     });
 });
